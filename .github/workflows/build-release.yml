@@ -370,7 +370,7 @@ jobs:
             "cd /d $($env:GITHUB_WORKSPACE)\wsclient",
             "call $($develDir.FullName)\phpize.bat",
             "if %errorlevel% neq 0 exit /b 3",
-            "call configure.bat --with-php-build=%DEPS_DIR% --enable-true-async-wsclient",
+            "call configure.bat --with-php-build=%DEPS_DIR% --enable-true-async-wsclient=shared",
             "if %errorlevel% neq 0 exit /b 3",
             "nmake /NOLOGO",
             "if %errorlevel% neq 0 exit /b 3"
