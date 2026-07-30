@@ -34,15 +34,16 @@ jobs:
           cp -a async/. php-src/ext/async/
           cd php-src
           ./buildconf --force
-          ./configure --enable-zts --enable-async --enable-cli --with-openssl
+          ./configure --prefix="$GITHUB_WORKSPACE/php-install" --enable-zts --enable-async --enable-cli --with-openssl
           make -j"$(nproc)"
+          make install
       - run: |
           cd wsclient
           sh scripts/prepare-wsclient-extension.sh
-          sh ../php-src/scripts/phpize
-          ./configure --with-php-config="$GITHUB_WORKSPACE/php-src/sapi/cli/php-config" --enable-true-async-wsclient
+          "$GITHUB_WORKSPACE/php-install/bin/phpize"
+          ./configure --with-php-config="$GITHUB_WORKSPACE/php-install/bin/php-config" --enable-true-async-wsclient
           make -j"$(nproc)"
           test -f modules/true_async_wsclient.so
-          "$GITHUB_WORKSPACE/php-src/sapi/cli/php" -n \
+          "$GITHUB_WORKSPACE/php-install/bin/php" -n \
             -d "extension=$PWD/modules/true_async_wsclient.so" \
             -r 'foreach (["TrueAsync\\WebSocketClient", "TrueAsync\\WebSocketClientConnection", "TrueAsync\\WebSocketClientMessage"] as $class) { if (!class_exists($class)) { exit(1); } }'
