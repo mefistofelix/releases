@@ -15,6 +15,10 @@
       "repo": "true-async/server",
       "branch": "v0.11.2"
     },
+    "wsclient": {
+      "repo": "mefistofelix/php-async-wsclient",
+      "branch": "main"
+    },
     "xdebug": {
       "repo": "true-async/xdebug",
       "branch": "php-8.6.0-trueasync-0.7.0",
