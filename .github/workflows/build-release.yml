@@ -340,6 +340,18 @@ jobs:
           }
           Write-Host "SUCCESS: php_true_async_server.dll found at $($dll.FullName)"
 
+      - name: Run WebSocket client PHPT suite
+        shell: cmd
+        run: |
+          set PHP_BIN=%PHP_BUILD_OBJ_DIR%\${{ matrix.output_dir }}\php.exe
+          for /r server %%F in (php_true_async_server.dll) do set WSCLIENT_DLL=%%F
+          if not defined WSCLIENT_DLL (
+            echo php_true_async_server.dll not found
+            exit /b 1
+          )
+          "%PHP_BIN%" php-src\run-tests.php --show-diff --show-exp -p "%PHP_BIN%" -d extension="%WSCLIENT_DLL%" server\tests\phpt\websocket\
+          if %errorlevel% neq 0 exit /b %errorlevel%
+
       # ── phpredis ─────────────────────────────────────────────────────────
       - name: Checkout phpredis
         uses: actions/checkout@v7

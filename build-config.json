@@ -3,19 +3,15 @@
   "php_is_latest": true,
   "php_src": {
     "repo": "true-async/php-src",
-    "branch": "php-8.6.0-trueasync-0.8.2"
+    "branch": "true-async-main"
   },
   "extensions": {
     "async": {
       "repo": "true-async/php-async",
-      "branch": "v0.8.2",
+      "branch": "main",
       "path": "ext/async"
     },
     "server": {
-      "repo": "true-async/server",
-      "branch": "v0.11.2"
-    },
-    "wsclient": {
       "repo": "mefistofelix/php-async-wsclient",
       "branch": "main"
     },
