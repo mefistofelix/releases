@@ -1,0 +1,45 @@
+name: Verify TrueAsync WebSocket Client
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: true-async/php-src
+          ref: true-async-main
+          path: php-src
+      - uses: actions/checkout@v7
+        with:
+          repository: true-async/php-async
+          ref: main
+          path: async
+      - uses: actions/checkout@v7
+        with:
+          repository: mefistofelix/php-async-wsclient
+          ref: main
+          path: wsclient
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake bison build-essential libssl-dev libxml2-dev pkg-config re2c
+          mkdir -p php-src/ext/async
+          cp -a async/. php-src/ext/async/
+          cd php-src
+          ./buildconf --force
+          ./configure --enable-zts --enable-async --enable-cli --with-openssl
+          make -j"$(nproc)"
+      - run: |
+          cd wsclient
+          sh scripts/prepare-wsclient-extension.sh
+          ../php-src/scripts/phpize
+          ./configure --with-php-config="$GITHUB_WORKSPACE/php-src/sapi/cli/php-config" --enable-true-async-wsclient
+          make -j"$(nproc)"
+          test -f modules/true_async_wsclient.so
