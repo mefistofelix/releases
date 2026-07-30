@@ -807,6 +807,55 @@ jobs:
           Add-Content -Path $iniPath -Value $phpConfig
           Write-Host "Created php.ini"
 
+          # ── End-to-end WebSocket client validation ────────────────────────────
+          # Run the PHP executable from the staged package, against the bundled
+          # TrueAsync WebSocket server. This proves the shipped DLL can upgrade,
+          # send and receive over an actual socket before the archive is created.
+          $wsTest = Join-Path $stageDir "verify-wsclient.php"
+          @'
+          <?php
+          use TrueAsync\HttpServer;
+          use TrueAsync\HttpServerConfig;
+          use TrueAsync\WebSocket;
+          use function Async\await;
+          use function Async\spawn;
+
+          $probe = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+          if ($probe === false) { throw new RuntimeException($errstr); }
+          $address = stream_socket_get_name($probe, false);
+          fclose($probe);
+          $port = (int) substr(strrchr($address, ':'), 1);
+
+          $server = new HttpServer((new HttpServerConfig())->addListener('127.0.0.1', $port));
+          $server->addWebSocketHandler(function (WebSocket $ws) {
+              if (($message = $ws->recv()) !== null) {
+                  $ws->send('echo:' . $message->data);
+              }
+          });
+
+          $client = spawn(function () use ($port, $server) {
+              usleep(20000);
+              $connection = TrueAsync\WebSocketClient::connect(
+                  "ws://127.0.0.1:$port/echo",
+                  ['X-TrueAsync-Validation' => '1']
+              );
+              $connection->send('ping');
+              $reply = $connection->receive();
+              $connection->close();
+              $server->stop();
+              return $reply?->data();
+          });
+
+          $server->start();
+          if (await($client) !== 'echo:ping') {
+              throw new RuntimeException('WebSocket echo validation failed');
+          }
+          echo "wsclient-e2e: OK\n";
+          '@ | Set-Content -Path $wsTest -Encoding ASCII
+          & "$stageDir\php.exe" -c $iniPath $wsTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item -LiteralPath $wsTest -Force
+
           # ── Archive ───────────────────────────────────────────────────────────
           Compress-Archive -Path "$stageDir\*" `
             -DestinationPath "$env:GITHUB_WORKSPACE\$archive" -Force
