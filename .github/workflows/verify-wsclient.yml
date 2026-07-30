@@ -29,7 +29,7 @@ jobs:
           path: wsclient
       - run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake bison build-essential libssl-dev libxml2-dev pkg-config re2c
+          sudo apt-get install -y autoconf automake bison build-essential libssl-dev libuv1-dev libxml2-dev pkg-config re2c
           mkdir -p php-src/ext/async
           cp -a async/. php-src/ext/async/
           cd php-src
