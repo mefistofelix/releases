@@ -1,0 +1,89 @@
+name: Build and Test TrueAsync WebSocket Client
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - build-config.json
+      - .github/workflows/build-wsclient.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Linux — build and test wsclient
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read component configuration
+        id: config
+        run: |
+          echo "wsclient_repo=$(jq -r '.extensions.wsclient.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "wsclient_branch=$(jq -r '.extensions.wsclient.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Install PHP build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake bison build-essential libssl-dev libxml2-dev \
+            libcurl4-openssl-dev libonig-dev libsqlite3-dev libzip-dev \
+            pkg-config re2c
+
+      - name: Checkout TrueAsync PHP development sources
+        uses: actions/checkout@v7
+        with:
+          repository: true-async/php-src
+          ref: true-async-main
+          path: php-src
+
+      - name: Checkout TrueAsync runtime development sources
+        uses: actions/checkout@v7
+        with:
+          repository: true-async/php-async
+          ref: main
+          path: async
+
+      - name: Install TrueAsync runtime in PHP source tree
+        run: |
+          mkdir -p php-src/ext/async
+          cp -a async/. php-src/ext/async/
+
+      - name: Build TrueAsync PHP
+        working-directory: php-src
+        run: |
+          ./buildconf --force
+          ./configure --enable-zts --enable-async --enable-cli --enable-sockets --with-openssl
+          make -j"$(nproc)"
+
+      - name: Checkout WebSocket client
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.config.outputs.wsclient_repo }}
+          ref: ${{ steps.config.outputs.wsclient_branch }}
+          path: wsclient
+
+      - name: Build WebSocket client extension
+        run: |
+          cd wsclient
+          ../php-src/scripts/phpize
+          ./configure --with-php-config="$GITHUB_WORKSPACE/php-src/sapi/cli/php-config" \
+            --enable-true-async-server --enable-websocket
+          make -j"$(nproc)"
+
+      - name: Verify loaded extensions
+        run: |
+          PHP_BIN="$GITHUB_WORKSPACE/php-src/sapi/cli/php"
+          WSCLIENT_SO="$GITHUB_WORKSPACE/wsclient/modules/true_async_server.so"
+          test -f "$WSCLIENT_SO"
+          "$PHP_BIN" -d "extension=$WSCLIENT_SO" -m | grep -iE 'async|true_async_server'
+
+      - name: Run WebSocket client PHPT suite
+        run: |
+          export TEST_PHP_ARGS="-d extension=$GITHUB_WORKSPACE/wsclient/modules/true_async_server.so"
+          "$GITHUB_WORKSPACE/php-src/sapi/cli/php" "$GITHUB_WORKSPACE/php-src/run-tests.php" \
+            --show-diff --show-exp -p "$GITHUB_WORKSPACE/php-src/sapi/cli/php" \
+            "$GITHUB_WORKSPACE/wsclient/tests/phpt/websocket"
