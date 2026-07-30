@@ -39,7 +39,7 @@ jobs:
       - run: |
           cd wsclient
           sh scripts/prepare-wsclient-extension.sh
-          ../php-src/scripts/phpize
+          sh ../php-src/scripts/phpize
           ./configure --with-php-config="$GITHUB_WORKSPACE/php-src/sapi/cli/php-config" --enable-true-async-wsclient
           make -j"$(nproc)"
           test -f modules/true_async_wsclient.so

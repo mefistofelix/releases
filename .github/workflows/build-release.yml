@@ -32,6 +32,8 @@ jobs:
       frankenphp_branch: ${{ steps.read.outputs.frankenphp_branch }}
       server_repo: ${{ steps.read.outputs.server_repo }}
       server_branch: ${{ steps.read.outputs.server_branch }}
+      wsclient_repo: ${{ steps.read.outputs.wsclient_repo }}
+      wsclient_branch: ${{ steps.read.outputs.wsclient_branch }}
       phpredis_repo: ${{ steps.read.outputs.phpredis_repo }}
       phpredis_branch: ${{ steps.read.outputs.phpredis_branch }}
       clickhouse_repo: ${{ steps.read.outputs.clickhouse_repo }}
@@ -55,6 +57,8 @@ jobs:
           echo "frankenphp_branch=$(jq -r '.frankenphp.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "server_repo=$(jq -r '.extensions.server.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "server_branch=$(jq -r '.extensions.server.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "wsclient_repo=$(jq -r '.extensions.wsclient.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "wsclient_branch=$(jq -r '.extensions.wsclient.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "phpredis_repo=$(jq -r '.extensions.phpredis.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "phpredis_branch=$(jq -r '.extensions.phpredis.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "clickhouse_repo=$(jq -r '.extensions.clickhouse.repo' build-config.json)" >> "$GITHUB_OUTPUT"
@@ -341,6 +345,38 @@ jobs:
           Write-Host "SUCCESS: php_true_async_server.dll found at $($dll.FullName)"
 
       # ── phpredis ─────────────────────────────────────────────────────────
+      - name: Checkout WebSocket client
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.config.outputs.wsclient_repo }}
+          ref: ${{ needs.config.outputs.wsclient_branch }}
+          path: wsclient
+
+      - name: Build WebSocket client
+        shell: pwsh
+        run: |
+          $objDir = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
+          $develDir = Get-ChildItem -Path $objDir -Directory -Filter "*-devel-*" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $develDir) { Write-Error "Devel directory not found"; exit 1 }
+          Copy-Item "$env:GITHUB_WORKSPACE\wsclient\wsclient-config.m4" "$env:GITHUB_WORKSPACE\wsclient\config.m4" -Force
+          Copy-Item "$env:GITHUB_WORKSPACE\wsclient\wsclient-config.w32" "$env:GITHUB_WORKSPACE\wsclient\config.w32" -Force
+          @(
+            "@echo off",
+            "cd /d $($env:GITHUB_WORKSPACE)\wsclient",
+            "call $($develDir.FullName)\phpize.bat",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call configure.bat --with-php-build=%DEPS_DIR% --enable-true-async-wsclient",
+            "if %errorlevel% neq 0 exit /b 3",
+            "nmake /NOLOGO",
+            "if %errorlevel% neq 0 exit /b 3"
+          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_wsclient.bat" -Encoding ASCII
+          $runner = "$env:PHP_BUILD_CACHE_SDK_DIR\phpsdk-$env:PHP_BUILD_CRT-$env:PLATFORM.bat"
+          cmd /c $runner -t "$env:GITHUB_WORKSPACE\task_wsclient.bat"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\wsclient" -Recurse -Filter "php_true_async_wsclient.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $dll) { Write-Error "php_true_async_wsclient.dll not found"; exit 1 }
+          Write-Host "SUCCESS: php_true_async_wsclient.dll found at $($dll.FullName)"
+
       - name: Checkout phpredis
         uses: actions/checkout@v7
         with:
@@ -692,6 +728,16 @@ jobs:
           Copy-Item $serverDll.FullName -Destination "$stageDir\ext\php_true_async_server.dll" -Force
           Write-Host "Added server: $($serverDll.FullName) -> ext\php_true_async_server.dll"
 
+          $wsclientDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\wsclient" -Recurse `
+                           -Filter "php_true_async_wsclient.dll" -ErrorAction SilentlyContinue |
+                         Select-Object -First 1
+          if (-not $wsclientDll) {
+            Write-Error "php_true_async_wsclient.dll not found after wsclient build"
+            exit 1
+          }
+          Copy-Item $wsclientDll.FullName -Destination "$stageDir\ext\php_true_async_wsclient.dll" -Force
+          Write-Host "Added WebSocket client: $($wsclientDll.FullName) -> ext\php_true_async_wsclient.dll"
+
           # ── phpredis ──────────────────────────────────────────────────────────
           $phpredisDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\phpredis" -Recurse `
                            -Filter "php_redis.dll" -ErrorAction SilentlyContinue |
@@ -739,6 +785,9 @@ jobs:
             "",
             "; TrueAsync HTTP server (HTTP/1+2)",
             "extension=php_true_async_server.dll",
+            "",
+            "; TrueAsync WebSocket client",
+            "extension=php_true_async_wsclient.dll",
             "",
             "; Redis client",
             "extension=php_redis.dll",
