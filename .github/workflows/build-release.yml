@@ -11,6 +11,11 @@ on:
         required: false
         default: true
         type: boolean
+      save_artifacts:
+        description: 'Upload build packages without creating a release'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -650,7 +655,7 @@ jobs:
           Get-ChildItem $stageDir | Format-Table Name, @{N='Size';E={'{0:N0}' -f $_.Length}}
 
       - name: Upload FrankenPHP artifact
-        if: ${{ !inputs.test_only }}
+        if: ${{ !inputs.test_only || inputs.save_artifacts }}
         uses: actions/upload-artifact@v7
         with:
           name: windows-x64${{ matrix.artifact_suffix }}-frankenphp
@@ -808,7 +813,7 @@ jobs:
           echo "ARCHIVE=$archive" >> $env:GITHUB_ENV
 
       - name: Upload artifact
-        if: ${{ !inputs.test_only }}
+        if: ${{ !inputs.test_only || inputs.save_artifacts }}
         uses: actions/upload-artifact@v7
         with:
           name: windows-x64${{ matrix.artifact_suffix }}
