@@ -720,10 +720,16 @@ jobs:
             }
           }
 
-          # ── libuv ─────────────────────────────────────────────────────────────
-          if (Test-Path "$env:DEPS_DIR\bin\uv.dll") {
-            Copy-Item "$env:DEPS_DIR\bin\uv.dll" $stageDir -Force
+          # ── Native runtime dependencies ──────────────────────────────────────
+          # Keep packaging independent from test execution. PHP extensions and
+          # TrueAsync modules load these native dependencies at runtime.
+          $depsBin = "$env:DEPS_DIR\bin"
+          if (-not (Test-Path $depsBin)) {
+            Write-Error "Dependency runtime directory not found: $depsBin"
+            exit 1
           }
+          Get-ChildItem $depsBin -Filter "*.dll" |
+            Copy-Item -Destination $stageDir -Force
 
           # ── Xdebug ────────────────────────────────────────────────────────────
           # phpize builds into xdebug\x64\<config>\ (not into $buildDir)
@@ -788,7 +794,7 @@ jobs:
             "",
             "extension_dir = `"ext`"",
             "",
-            "; Core extensions (required for Symfony and most frameworks)",
+            "; Core PHP extensions",
             "extension=curl",
             "extension=fileinfo",
             "extension=gd",
