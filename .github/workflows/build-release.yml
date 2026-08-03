@@ -16,6 +16,15 @@ on:
         required: false
         default: false
         type: boolean
+      build_type:
+        description: 'Build configuration to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - Debug
+          - Release
 
 permissions:
   contents: write
@@ -46,6 +55,7 @@ jobs:
       version: ${{ steps.read.outputs.version }}
       php_version: ${{ steps.read.outputs.php_version }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
+      build_matrix: ${{ steps.read.outputs.build_matrix }}
     steps:
       - uses: actions/checkout@v7
 
@@ -81,6 +91,15 @@ jobs:
             fi
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          BUILD_TYPE='${{ inputs.build_type }}'
+          RELEASE='{"build_type":"Release","output_dir":"Release_TS","configure_flags":"--enable-snapshot-build --disable-debug-pack --enable-embed","install_prefix":"C:\\php-trueasync","artifact_suffix":""}'
+          DEBUG='{"build_type":"Debug","output_dir":"Debug_TS","configure_flags":"--enable-debug --enable-embed","install_prefix":"C:\\php-trueasync-debug","artifact_suffix":"-debug"}'
+          case "$BUILD_TYPE" in
+            Debug) MATRIX="{\"include\":[$DEBUG]}" ;;
+            Release) MATRIX="{\"include\":[$RELEASE]}" ;;
+            *) MATRIX="{\"include\":[$RELEASE,$DEBUG]}" ;;
+          esac
+          echo "build_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   # Windows x64 build (Release + Debug via matrix)
@@ -92,18 +111,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - build_type: Release
-            output_dir: Release_TS
-            configure_flags: "--enable-snapshot-build --disable-debug-pack --enable-embed"
-            install_prefix: "C:\\php-trueasync"
-            artifact_suffix: ""
-          - build_type: Debug
-            output_dir: Debug_TS
-            configure_flags: "--enable-debug --enable-embed"
-            install_prefix: "C:\\php-trueasync-debug"
-            artifact_suffix: "-debug"
+      matrix: ${{ fromJSON(needs.config.outputs.build_matrix) }}
     env:
       PHP_BUILD_CACHE_BASE_DIR: C:\build-cache
       PHP_BUILD_OBJ_DIR: C:\obj
