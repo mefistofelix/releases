@@ -811,30 +811,42 @@ jobs:
           # Run the PHP executable from the staged package, against the bundled
           # TrueAsync WebSocket server. This proves the shipped DLL can upgrade,
           # send and receive over an actual socket before the archive is created.
-          $wsTest = Join-Path $stageDir "verify-wsclient.php"
+          $wsServerTest = Join-Path $stageDir "verify-wsclient-server.php"
+          $wsClientTest = Join-Path $stageDir "verify-wsclient-client.php"
           @'
           <?php
+          use TrueAsync\HttpRequest;
           use TrueAsync\HttpServer;
           use TrueAsync\HttpServerConfig;
           use TrueAsync\WebSocket;
+
+          $port = (int) $argv[1];
+          $server = new HttpServer((new HttpServerConfig())->addListener('127.0.0.1', $port));
+          $server->addWebSocketHandler(function (WebSocket $ws, HttpRequest $request) use ($server) {
+              try {
+                  if ($request->getHeaderLine('X-TrueAsync-Validation') !== '1') {
+                      throw new RuntimeException('Custom WebSocket header was not received');
+                  }
+                  if (($message = $ws->recv()) !== null) {
+                      $ws->send('echo:' . $message->data);
+                  }
+              } finally {
+                  $server->stop();
+              }
+          });
+          $server->addHttpHandler(function ($request, $response) {
+              $response->setStatusCode(404)->end();
+          });
+          $server->start();
+          '@ | Set-Content -Path $wsServerTest -Encoding ASCII
+
+          @'
+          <?php
           use function Async\await;
           use function Async\spawn;
 
-          $probe = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
-          if ($probe === false) { throw new RuntimeException($errstr); }
-          $address = stream_socket_get_name($probe, false);
-          fclose($probe);
-          $port = (int) substr(strrchr($address, ':'), 1);
-
-          $server = new HttpServer((new HttpServerConfig())->addListener('127.0.0.1', $port));
-          $server->addWebSocketHandler(function (WebSocket $ws) {
-              if (($message = $ws->recv()) !== null) {
-                  $ws->send('echo:' . $message->data);
-              }
-          });
-
-          $client = spawn(function () use ($port, $server) {
-              usleep(20000);
+          $port = (int) $argv[1];
+          $client = spawn(function () use ($port) {
               $connection = TrueAsync\WebSocketClient::connect(
                   "ws://127.0.0.1:$port/echo",
                   ['X-TrueAsync-Validation' => '1']
@@ -842,19 +854,40 @@ jobs:
               $connection->send('ping');
               $reply = $connection->receive();
               $connection->close();
-              $server->stop();
               return $reply?->data();
           });
 
-          $server->start();
           if (await($client) !== 'echo:ping') {
               throw new RuntimeException('WebSocket echo validation failed');
           }
           echo "wsclient-e2e: OK\n";
-          '@ | Set-Content -Path $wsTest -Encoding ASCII
-          & "$stageDir\php.exe" -c $iniPath $wsTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Remove-Item -LiteralPath $wsTest -Force
+          '@ | Set-Content -Path $wsClientTest -Encoding ASCII
+
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+          $listener.Start()
+          $wsPort = ([System.Net.IPEndPoint] $listener.LocalEndpoint).Port
+          $listener.Stop()
+          $serverOut = Join-Path $env:RUNNER_TEMP "wsclient-server-${{ matrix.build_type }}.out"
+          $serverErr = Join-Path $env:RUNNER_TEMP "wsclient-server-${{ matrix.build_type }}.err"
+          $serverProcess = Start-Process -FilePath "$stageDir\php.exe" `
+            -ArgumentList @('-c', $iniPath, $wsServerTest, $wsPort) `
+            -WindowStyle Hidden -RedirectStandardOutput $serverOut `
+            -RedirectStandardError $serverErr -PassThru
+          Start-Sleep -Milliseconds 500
+          & "$stageDir\php.exe" -c $iniPath $wsClientTest $wsPort
+          $clientExit = $LASTEXITCODE
+          $serverExited = $serverProcess.WaitForExit(5000)
+          if (-not $serverExited) {
+            Stop-Process -Id $serverProcess.Id -Force
+          }
+          Get-Content -LiteralPath $serverOut -ErrorAction SilentlyContinue
+          Get-Content -LiteralPath $serverErr -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $wsServerTest, $wsClientTest, $serverOut, $serverErr `
+            -Force -ErrorAction SilentlyContinue
+          if ($clientExit -ne 0 -or -not $serverExited -or $serverProcess.ExitCode -ne 0) {
+            Write-Error "WebSocket e2e failed: client=$clientExit serverExited=$serverExited server=$($serverProcess.ExitCode)"
+            exit 1
+          }
 
           # ── Archive ───────────────────────────────────────────────────────────
           Compress-Archive -Path "$stageDir\*" `
