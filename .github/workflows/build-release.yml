@@ -528,6 +528,7 @@ jobs:
 
       # ── FrankenPHP ────────────────────────────────────────────────────────
       - name: Checkout frankenphp
+        if: ${{ false }}
         uses: actions/checkout@v7
         with:
           repository: ${{ needs.config.outputs.frankenphp_repo }}
@@ -535,6 +536,7 @@ jobs:
           path: frankenphp
 
       - name: Install vcpkg brotli and pthreads (FrankenPHP)
+        if: ${{ false }}
         shell: powershell
         env:
           VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-cache
@@ -542,6 +544,7 @@ jobs:
           C:\vcpkg\vcpkg.exe install brotli:x64-windows pthreads:x64-windows
 
       - name: Download watcher (FrankenPHP)
+        if: ${{ false }}
         shell: powershell
         run: |
           $latestTag = gh release list --repo e-dant/watcher --limit 1 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[0].tagName'
@@ -553,6 +556,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Go (FrankenPHP)
+        if: ${{ false }}
         uses: actions/setup-go@v6
         with:
           go-version: "1.26"
@@ -562,6 +566,7 @@ jobs:
           check-latest: true
 
       - name: Build FrankenPHP
+        if: ${{ false }}
         shell: powershell
         run: |
           $version    = "${{ needs.config.outputs.version }}"
@@ -620,6 +625,7 @@ jobs:
           Pop-Location
 
       - name: Package FrankenPHP
+        if: ${{ false }}
         shell: pwsh
         run: |
           $version    = "${{ needs.config.outputs.version }}"
@@ -663,7 +669,7 @@ jobs:
           Get-ChildItem $stageDir | Format-Table Name, @{N='Size';E={'{0:N0}' -f $_.Length}}
 
       - name: Upload FrankenPHP artifact
-        if: ${{ !inputs.test_only || inputs.save_artifacts }}
+        if: ${{ false }}
         uses: actions/upload-artifact@v7
         with:
           name: windows-x64${{ matrix.artifact_suffix }}-frankenphp
